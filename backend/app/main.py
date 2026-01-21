@@ -38,7 +38,8 @@ from app.integrations.negotiation_arena import (
     get_session as get_negotiation_session,
     analyze_statement,
     get_transcript,
-    get_session_summary
+    get_session_summary,
+    transcribe_audio
 )
 
 app = FastAPI(title="The Equalizer", version="1.0.0")
@@ -904,6 +905,7 @@ async def negotiation_websocket(websocket: WebSocket, room_id: str):
     WebSocket endpoint for real-time negotiation AI assistance.
 
     Client sends: {"type": "transcript", "speaker": "them", "text": "..."}
+    Client sends: {"type": "audio", "data": "<base64 audio>"}  (for Whisper transcription)
     Server sends: {"type": "counter_card", "card": {...}, "negotiation_score": 75}
     """
     await websocket.accept()
@@ -922,38 +924,97 @@ async def negotiation_websocket(websocket: WebSocket, room_id: str):
         })
 
         while True:
-            # Receive message from client
-            data = await websocket.receive_json()
+            # Receive message from client (can be text or binary)
+            message = await websocket.receive()
 
-            if data.get("type") == "transcript":
-                speaker = data.get("speaker", "them")
-                text = data.get("text", "")
+            if "text" in message:
+                data = json.loads(message["text"])
 
-                if text.strip():
-                    # Analyze the statement and get counter-arguments
-                    result = await analyze_statement(
-                        room_id=room_id,
-                        statement=text,
-                        speaker=speaker
-                    )
+                if data.get("type") == "transcript":
+                    speaker = data.get("speaker", "them")
+                    text = data.get("text", "")
 
-                    if result:
-                        # Send counter card back to client
-                        await websocket.send_json({
-                            "type": "counter_card",
-                            "card": result["card"],
-                            "negotiation_score": result["negotiation_score"]
-                        })
-                    else:
-                        # Acknowledge receipt even if no card generated
-                        await websocket.send_json({
-                            "type": "transcript_received",
-                            "speaker": speaker,
-                            "text": text[:50] + "..." if len(text) > 50 else text
-                        })
+                    if text.strip():
+                        # Analyze the statement and get counter-arguments
+                        result = await analyze_statement(
+                            room_id=room_id,
+                            statement=text,
+                            speaker=speaker
+                        )
 
-            elif data.get("type") == "ping":
-                await websocket.send_json({"type": "pong"})
+                        if result:
+                            # Send counter card to ALL clients in the room
+                            for ws in active_connections.get(room_id, []):
+                                try:
+                                    await ws.send_json({
+                                        "type": "counter_card",
+                                        "card": result["card"],
+                                        "negotiation_score": result["negotiation_score"]
+                                    })
+                                except:
+                                    pass
+                        else:
+                            # Acknowledge receipt even if no card generated
+                            await websocket.send_json({
+                                "type": "transcript_received",
+                                "speaker": speaker,
+                                "text": text[:50] + "..." if len(text) > 50 else text
+                            })
+
+                elif data.get("type") == "audio":
+                    # Handle base64 encoded audio for Whisper transcription
+                    import base64
+                    audio_b64 = data.get("data", "")
+                    if audio_b64:
+                        try:
+                            audio_bytes = base64.b64decode(audio_b64)
+                            # Transcribe using Whisper
+                            transcript = await transcribe_audio(audio_bytes)
+                            if transcript.strip():
+                                # Analyze the transcription
+                                result = await analyze_statement(
+                                    room_id=room_id,
+                                    statement=transcript,
+                                    speaker="them"
+                                )
+                                if result:
+                                    # Send to all clients
+                                    for ws in active_connections.get(room_id, []):
+                                        try:
+                                            await ws.send_json({
+                                                "type": "counter_card",
+                                                "card": result["card"],
+                                                "negotiation_score": result["negotiation_score"]
+                                            })
+                                        except:
+                                            pass
+                        except Exception as e:
+                            print(f"Audio transcription error: {e}")
+
+                elif data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+
+            elif "bytes" in message:
+                # Handle raw binary audio
+                audio_bytes = message["bytes"]
+                if audio_bytes:
+                    transcript = await transcribe_audio(audio_bytes)
+                    if transcript.strip():
+                        result = await analyze_statement(
+                            room_id=room_id,
+                            statement=transcript,
+                            speaker="them"
+                        )
+                        if result:
+                            for ws in active_connections.get(room_id, []):
+                                try:
+                                    await ws.send_json({
+                                        "type": "counter_card",
+                                        "card": result["card"],
+                                        "negotiation_score": result["negotiation_score"]
+                                    })
+                                except:
+                                    pass
 
     except WebSocketDisconnect:
         # Clean up connection

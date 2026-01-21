@@ -93,9 +93,10 @@ def predict_outcome(
         "original_bill": bill_data.total_amount,
 
         "savings_estimate": {
-            "minimum": round(bill_data.total_amount - expected_final_high),
-            "expected": round(expected_discount_amount),
-            "maximum": round(bill_data.total_amount - max(cghs_rate * 0.9, expected_final_low)),
+            # Correct calculation: savings = bill - CGHS rate (what you're overcharged)
+            "minimum": round((bill_data.total_amount - cghs_rate) * 0.5) if cghs_rate else round(bill_data.total_amount * 0.2),
+            "expected": round(bill_data.total_amount - cghs_rate) if cghs_rate else round(expected_discount_amount),
+            "maximum": round(bill_data.total_amount - cghs_rate) if cghs_rate else round(bill_data.total_amount - expected_final_low),
         },
 
         "time_estimate": strategy.get("primary_strategy", {}).get("time_to_resolution", "2-4 weeks"),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Peer, { MediaConnection } from 'peerjs';
 import { Video, VideoOff, Mic, MicOff, PhoneOff, Phone } from 'lucide-react';
@@ -10,7 +10,8 @@ const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
 /**
  * Video call page for the OTHER party to join.
  * They open: /call/{peerId}?room={roomId}
- * Their speech is transcribed and sent to the AI for the host to get counter-arguments.
+ * Their speech is captured via MediaRecorder, sent to backend for Whisper transcription,
+ * then analyzed by AI for the host to get counter-arguments.
  */
 export default function JoinCallPage() {
   const params = useParams();
@@ -31,7 +32,8 @@ export default function JoinCallPage() {
   const callRef = useRef<MediaConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Initialize PeerJS and get local media
   useEffect(() => {
@@ -98,24 +100,99 @@ export default function JoinCallPage() {
       peerRef.current?.destroy();
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       wsRef.current?.close();
-      recognitionRef.current?.stop();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
     };
   }, []);
 
-  // Connect to WebSocket when we have a room ID and start transcription after
+  // Start capturing audio using MediaRecorder and send to backend for Whisper transcription
+  const startAudioCapture = useCallback(() => {
+    if (!localStreamRef.current) {
+      console.error('No local stream available for audio capture');
+      return;
+    }
+
+    // Create audio-only stream from the local stream
+    const audioTracks = localStreamRef.current.getAudioTracks();
+    if (audioTracks.length === 0) {
+      console.error('No audio tracks available');
+      return;
+    }
+
+    const audioStream = new MediaStream(audioTracks);
+
+    // Check for supported mime types
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm')
+      ? 'audio/webm'
+      : 'audio/mp4';
+
+    try {
+      const mediaRecorder = new MediaRecorder(audioStream, {
+        mimeType,
+        audioBitsPerSecond: 16000, // Lower bitrate for faster upload
+      });
+
+      mediaRecorder.ondataavailable = async (event) => {
+        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+          // Convert blob to base64 and send to backend
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64Audio = (reader.result as string).split(',')[1];
+            if (base64Audio) {
+              console.log('Sending audio chunk for transcription:', event.data.size, 'bytes');
+              wsRef.current?.send(
+                JSON.stringify({
+                  type: 'audio',
+                  data: base64Audio,
+                })
+              );
+            }
+          };
+          reader.readAsDataURL(event.data);
+        }
+      };
+
+      mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event);
+      };
+
+      // Record in 3-second chunks for real-time transcription
+      mediaRecorder.start(3000);
+      mediaRecorderRef.current = mediaRecorder;
+      setIsTranscribing(true);
+      console.log('Audio capture started with', mimeType);
+    } catch (err) {
+      console.error('Failed to start MediaRecorder:', err);
+    }
+  }, []);
+
+  // Stop audio capture
+  const stopAudioCapture = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
+    setIsTranscribing(false);
+  }, []);
+
+  // Connect to WebSocket when we have a room ID and start audio capture after
   useEffect(() => {
     if (roomId && status === 'connected' && !wsRef.current) {
       const wsUrl = `${WS_BASE}/api/negotiation/ws/${roomId}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log('WebSocket connected for transcription');
-        // Start transcription AFTER WebSocket is connected
-        startTranscription();
+        console.log('WebSocket connected for audio transcription');
+        // Start audio capture AFTER WebSocket is connected
+        startAudioCapture();
       };
 
       ws.onclose = () => {
         console.log('WebSocket disconnected');
+        stopAudioCapture();
       };
 
       ws.onerror = (err) => {
@@ -124,57 +201,7 @@ export default function JoinCallPage() {
 
       wsRef.current = ws;
     }
-  }, [roomId, status]);
-
-  // Initialize Web Speech API for transcription
-  const startTranscription = () => {
-    if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event: any) => {
-        let finalTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript;
-          }
-        }
-
-        // Send final transcript to AI as "them" (the other party's perspective)
-        if (finalTranscript && wsRef.current?.readyState === WebSocket.OPEN) {
-          console.log('Sending transcript:', finalTranscript);
-          wsRef.current.send(
-            JSON.stringify({
-              type: 'transcript',
-              speaker: 'them', // This person's speech goes to the host as "them"
-              text: finalTranscript,
-            })
-          );
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-      };
-
-      recognition.onend = () => {
-        // Auto-restart if still connected
-        if (status === 'connected' && isTranscribing) {
-          recognition.start();
-        }
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-      setIsTranscribing(true);
-    }
-  };
+  }, [roomId, status, startAudioCapture, stopAudioCapture]);
 
   // Call the host
   const callHost = () => {
@@ -230,7 +257,7 @@ export default function JoinCallPage() {
     callRef.current?.close();
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     wsRef.current?.close();
-    recognitionRef.current?.stop();
+    stopAudioCapture();
     setStatus('ended');
   };
 

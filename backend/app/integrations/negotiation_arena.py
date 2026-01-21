@@ -2,7 +2,7 @@
 Negotiation Arena - Real-time AI-powered negotiation assistant.
 
 During a video call, this system:
-1. Transcribes what the other person says (via Web Speech API on frontend)
+1. Transcribes what the other person says (via OpenAI Whisper on backend)
 2. Analyzes their claims in real-time
 3. Generates counter-arguments and fact-checks
 4. Sends transparent overlay cards to your screen
@@ -13,6 +13,8 @@ import os
 import json
 import asyncio
 import httpx
+import base64
+import tempfile
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, asdict
@@ -23,6 +25,47 @@ logger = logging.getLogger(__name__)
 # API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+
+async def transcribe_audio(audio_data: bytes) -> str:
+    """Transcribe audio using OpenAI Whisper API"""
+    if not OPENAI_API_KEY:
+        logger.error("OpenAI API key not configured")
+        return ""
+
+    try:
+        # Save audio to a temp file
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
+            f.write(audio_data)
+            temp_path = f.name
+
+        # Call OpenAI Whisper API
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            with open(temp_path, "rb") as audio_file:
+                response = await client.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                    files={"file": ("audio.webm", audio_file, "audio/webm")},
+                    data={"model": "whisper-1", "language": "en"}
+                )
+
+            if response.status_code == 200:
+                result = response.json()
+                transcript = result.get("text", "").strip()
+                logger.info(f"Transcribed: {transcript[:100]}...")
+                return transcript
+            else:
+                logger.error(f"Whisper API error: {response.status_code} - {response.text}")
+                return ""
+    except Exception as e:
+        logger.error(f"Transcription error: {e}")
+        return ""
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
 
 
 @dataclass
