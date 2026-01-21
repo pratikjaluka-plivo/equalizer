@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")  # Optional fallback
+DID_API_KEY = os.getenv("DID_API_KEY", "")  # D-ID for talking head videos
 
 # Initialize Gemini client for Veo
 genai_client = None
@@ -171,6 +172,252 @@ Only respond with the JSON, nothing else."""
 
     # On error, return original script as valid
     return {"valid": True, "script": script}
+
+
+async def create_video_with_did(
+    photo_base64: str,
+    script: str,
+    request: 'VideoRequest'
+) -> Optional[Dict[str, Any]]:
+    """
+    Create a talking head video using D-ID API.
+    D-ID animates a photo to create a video of the person speaking the script.
+
+    Flow:
+    1. Create a talk request with the photo and script
+    2. Poll for completion
+    3. Return the video URL
+    """
+    if not DID_API_KEY:
+        logger.warning("D-ID API key not configured")
+        return None
+
+    did_base_url = "https://api.d-id.com"
+    headers = {
+        "Authorization": f"Basic {DID_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            # Step 1: Create talk request
+            logger.info("Creating D-ID talk video...")
+
+            # Prepare the photo - D-ID accepts base64 or URL
+            # We'll use base64 with data URI
+            photo_data_uri = f"data:image/jpeg;base64,{photo_base64}"
+
+            talk_payload = {
+                "source_url": photo_data_uri,
+                "script": {
+                    "type": "text",
+                    "input": script,
+                    "provider": {
+                        "type": "microsoft",
+                        "voice_id": "en-IN-PrabhatNeural"  # Indian English male voice
+                    }
+                },
+                "config": {
+                    "fluent": True,
+                    "pad_audio": 0.5,
+                    "stitch": True
+                }
+            }
+
+            create_response = await client.post(
+                f"{did_base_url}/talks",
+                headers=headers,
+                json=talk_payload
+            )
+
+            if create_response.status_code not in [200, 201]:
+                error_text = create_response.text
+                logger.error(f"D-ID create talk error: {create_response.status_code} - {error_text}")
+
+                # Check for specific errors
+                if "insufficient_credits" in error_text.lower() or "quota" in error_text.lower():
+                    logger.error("D-ID credits exhausted. Add credits at https://studio.d-id.com/")
+
+                return None
+
+            talk_data = create_response.json()
+            talk_id = talk_data.get("id")
+
+            if not talk_id:
+                logger.error(f"D-ID response missing talk ID: {talk_data}")
+                return None
+
+            logger.info(f"D-ID talk created with ID: {talk_id}")
+
+            # Step 2: Poll for completion (max 2 minutes)
+            max_attempts = 24  # 24 * 5 seconds = 2 minutes
+            attempt = 0
+
+            while attempt < max_attempts:
+                await asyncio.sleep(5)
+                attempt += 1
+
+                status_response = await client.get(
+                    f"{did_base_url}/talks/{talk_id}",
+                    headers=headers
+                )
+
+                if status_response.status_code != 200:
+                    logger.error(f"D-ID status check error: {status_response.status_code}")
+                    continue
+
+                status_data = status_response.json()
+                status = status_data.get("status")
+
+                logger.info(f"D-ID video status: {status} (attempt {attempt}/{max_attempts})")
+
+                if status == "done":
+                    result_url = status_data.get("result_url")
+                    if result_url:
+                        logger.info(f"D-ID video ready: {result_url}")
+                        return {
+                            "video_url": result_url,
+                            "video_id": f"did_{talk_id}",
+                            "thumbnail_url": status_data.get("thumbnail_url"),
+                            "duration": status_data.get("duration", 30),
+                            "source": "d-id"
+                        }
+                    else:
+                        logger.error("D-ID video done but no result_url")
+                        return None
+
+                elif status == "error":
+                    error_msg = status_data.get("error", {}).get("message", "Unknown error")
+                    logger.error(f"D-ID video generation failed: {error_msg}")
+                    return None
+
+                elif status in ["created", "started", "processing"]:
+                    continue
+                else:
+                    logger.warning(f"Unknown D-ID status: {status}")
+
+            logger.error("D-ID video generation timed out")
+            return None
+
+    except httpx.TimeoutException:
+        logger.error("D-ID API request timed out")
+        return None
+    except Exception as e:
+        logger.error(f"D-ID API error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+async def create_video_with_did_clips(
+    photo_base64: str,
+    script: str,
+    request: 'VideoRequest'
+) -> Optional[Dict[str, Any]]:
+    """
+    Alternative D-ID method using clips API for longer videos.
+    Falls back to this if standard talks API fails.
+    """
+    if not DID_API_KEY:
+        return None
+
+    did_base_url = "https://api.d-id.com"
+    headers = {
+        "Authorization": f"Basic {DID_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            logger.info("Creating D-ID clip video...")
+
+            photo_data_uri = f"data:image/jpeg;base64,{photo_base64}"
+
+            clip_payload = {
+                "presenter_id": "amy-jcwCkr1grs",  # D-ID default presenter
+                "script": {
+                    "type": "text",
+                    "input": script,
+                    "provider": {
+                        "type": "microsoft",
+                        "voice_id": "en-IN-PrabhatNeural"
+                    }
+                },
+                "background": {
+                    "color": "#FFFFFF"
+                },
+                "presenter_config": {
+                    "crop": {
+                        "type": "rectangle"
+                    }
+                }
+            }
+
+            # If user provided their photo, use it as custom presenter
+            if photo_base64:
+                clip_payload["source_url"] = photo_data_uri
+
+            create_response = await client.post(
+                f"{did_base_url}/clips",
+                headers=headers,
+                json=clip_payload
+            )
+
+            if create_response.status_code not in [200, 201]:
+                logger.error(f"D-ID clips error: {create_response.status_code} - {create_response.text}")
+                return None
+
+            clip_data = create_response.json()
+            clip_id = clip_data.get("id")
+
+            if not clip_id:
+                return None
+
+            logger.info(f"D-ID clip created: {clip_id}")
+
+            # Poll for completion
+            max_attempts = 36  # 3 minutes
+            attempt = 0
+
+            while attempt < max_attempts:
+                await asyncio.sleep(5)
+                attempt += 1
+
+                status_response = await client.get(
+                    f"{did_base_url}/clips/{clip_id}",
+                    headers=headers
+                )
+
+                if status_response.status_code != 200:
+                    continue
+
+                status_data = status_response.json()
+                status = status_data.get("status")
+
+                logger.info(f"D-ID clip status: {status}")
+
+                if status == "done":
+                    result_url = status_data.get("result_url")
+                    if result_url:
+                        return {
+                            "video_url": result_url,
+                            "video_id": f"did_clip_{clip_id}",
+                            "thumbnail_url": status_data.get("thumbnail_url"),
+                            "duration": status_data.get("duration", 30),
+                            "source": "d-id-clips"
+                        }
+                    return None
+
+                elif status == "error":
+                    logger.error(f"D-ID clip failed: {status_data.get('error')}")
+                    return None
+
+            logger.error("D-ID clip timed out")
+            return None
+
+    except Exception as e:
+        logger.error(f"D-ID clips error: {e}")
+        return None
 
 
 async def generate_viral_script(request: VideoRequest) -> str:
@@ -481,9 +728,10 @@ async def generate_viral_video(request: VideoRequest) -> VideoResult:
 
     Flow:
     1. Generate viral script using OpenAI + Gemini validation
-    2. Create video with Veo 3.1 (Gemini)
-    3. If video fails, create a viral poster image
-    4. Return video/image URL and Twitter text
+    2. Create video with D-ID (talking head from user's photo) - PRIMARY
+    3. If D-ID fails, try Veo 3.1 (Gemini)
+    4. If all video fails, create a viral poster image
+    5. Return video/image URL and Twitter text
     """
     # Step 1: Generate the script (OpenAI + Gemini validation)
     script = await generate_viral_script(request)
@@ -492,28 +740,74 @@ async def generate_viral_video(request: VideoRequest) -> VideoResult:
     # Step 2: Generate Twitter text
     twitter_text = generate_twitter_text(request)
 
-    # Step 3: Create video with Veo 3.1 (Gemini)
-    logger.info("Generating video with Veo 3.1 (Gemini)...")
-    video_result = await create_video_with_veo(
-        photo_base64=request.user_photo_base64,
-        script=script,
-        request=request
-    )
-
-    if video_result:
-        logger.info("Video generated successfully with Veo 3.1")
-        return VideoResult(
-            success=True,
-            video_url=video_result["video_url"],
-            video_id=video_result["video_id"],
+    # Step 3: Create video with D-ID (PRIMARY - best for user photos)
+    if DID_API_KEY:
+        logger.info("Generating video with D-ID (talking head)...")
+        video_result = await create_video_with_did(
+            photo_base64=request.user_photo_base64,
             script=script,
-            thumbnail_url=video_result.get("thumbnail_url"),
-            twitter_text=twitter_text,
-            fallback_used=False
+            request=request
         )
 
-    # Step 4: Fallback to poster image
-    logger.info("Veo 3.1 video generation failed, creating poster fallback...")
+        if video_result:
+            logger.info("Video generated successfully with D-ID")
+            return VideoResult(
+                success=True,
+                video_url=video_result["video_url"],
+                video_id=video_result["video_id"],
+                script=script,
+                thumbnail_url=video_result.get("thumbnail_url"),
+                twitter_text=twitter_text,
+                fallback_used=False
+            )
+
+        # Try D-ID clips API as fallback
+        logger.info("D-ID talks failed, trying clips API...")
+        video_result = await create_video_with_did_clips(
+            photo_base64=request.user_photo_base64,
+            script=script,
+            request=request
+        )
+
+        if video_result:
+            logger.info("Video generated successfully with D-ID clips")
+            return VideoResult(
+                success=True,
+                video_url=video_result["video_url"],
+                video_id=video_result["video_id"],
+                script=script,
+                thumbnail_url=video_result.get("thumbnail_url"),
+                twitter_text=twitter_text,
+                fallback_used=False
+            )
+    else:
+        logger.info("D-ID API key not configured, skipping D-ID")
+
+    # Step 4: Fallback to Veo 3.1 (Gemini)
+    if GEMINI_API_KEY:
+        logger.info("D-ID failed, trying Veo 3.1 (Gemini)...")
+        video_result = await create_video_with_veo(
+            photo_base64=request.user_photo_base64,
+            script=script,
+            request=request
+        )
+
+        if video_result:
+            logger.info("Video generated successfully with Veo 3.1")
+            return VideoResult(
+                success=True,
+                video_url=video_result["video_url"],
+                video_id=video_result["video_id"],
+                script=script,
+                thumbnail_url=video_result.get("thumbnail_url"),
+                twitter_text=twitter_text,
+                fallback_used=False
+            )
+    else:
+        logger.info("Gemini API key not configured, skipping Veo")
+
+    # Step 5: Fallback to poster image
+    logger.info("All video generation failed, creating poster fallback...")
     poster_base64 = await create_viral_poster(request, script)
 
     if poster_base64:
@@ -523,7 +817,7 @@ async def generate_viral_video(request: VideoRequest) -> VideoResult:
             script=script,
             twitter_text=twitter_text,
             fallback_used=True,
-            error="Veo 3.1 video generation failed. Created viral poster instead."
+            error="Video generation failed (D-ID and Veo). Created viral poster instead."
         )
 
     # Complete failure
@@ -531,20 +825,89 @@ async def generate_viral_video(request: VideoRequest) -> VideoResult:
         success=False,
         script=script,
         twitter_text=twitter_text,
-        error="Video and image generation failed. Please check API configurations."
+        error="Video and image generation failed. Please check API configurations (DID_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY)."
     )
 
 
 async def check_video_status(video_id: str) -> Dict[str, Any]:
-    """Check the status of a Veo video generation operation"""
-    if not GEMINI_API_KEY:
-        return {"error": "Gemini API not configured"}
+    """Check the status of a video generation operation (D-ID or Veo)"""
+
+    # D-ID video IDs
+    if video_id.startswith("did_"):
+        if not DID_API_KEY:
+            return {"error": "D-ID API not configured"}
+
+        talk_id = video_id.replace("did_", "")
+        did_base_url = "https://api.d-id.com"
+        headers = {
+            "Authorization": f"Basic {DID_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{did_base_url}/talks/{talk_id}",
+                    headers=headers,
+                    timeout=30.0
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        "status": data.get("status", "unknown"),
+                        "video_id": video_id,
+                        "result_url": data.get("result_url"),
+                        "thumbnail_url": data.get("thumbnail_url"),
+                        "source": "d-id"
+                    }
+                else:
+                    return {"error": f"D-ID status check failed: {response.status_code}"}
+        except Exception as e:
+            return {"error": f"D-ID status check error: {str(e)}"}
+
+    # D-ID clip IDs
+    if video_id.startswith("did_clip_"):
+        if not DID_API_KEY:
+            return {"error": "D-ID API not configured"}
+
+        clip_id = video_id.replace("did_clip_", "")
+        did_base_url = "https://api.d-id.com"
+        headers = {
+            "Authorization": f"Basic {DID_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{did_base_url}/clips/{clip_id}",
+                    headers=headers,
+                    timeout=30.0
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        "status": data.get("status", "unknown"),
+                        "video_id": video_id,
+                        "result_url": data.get("result_url"),
+                        "thumbnail_url": data.get("thumbnail_url"),
+                        "source": "d-id-clips"
+                    }
+                else:
+                    return {"error": f"D-ID clip status check failed: {response.status_code}"}
+        except Exception as e:
+            return {"error": f"D-ID clip status check error: {str(e)}"}
 
     # Veo video IDs starting with "veo_" are local IDs, not operation names
     if video_id.startswith("veo_"):
-        return {"status": "completed", "video_id": video_id}
+        return {"status": "completed", "video_id": video_id, "source": "veo"}
 
     # Otherwise, treat as Veo operation name and check status
+    if not GEMINI_API_KEY:
+        return {"error": "Gemini API not configured"}
+
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"https://generativelanguage.googleapis.com/v1beta/{video_id}",

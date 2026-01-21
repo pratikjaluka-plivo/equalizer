@@ -795,13 +795,15 @@ async def get_viral_video_config():
     """Get configuration status for viral video generation"""
     import os
     return {
+        "did_configured": bool(os.getenv("DID_API_KEY")),
         "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
         "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
         "dual_llm_active": bool(os.getenv("OPENAI_API_KEY")) and bool(os.getenv("GEMINI_API_KEY")),
-        "video_engine": "Veo 3.1 (Google Gemini)",
+        "video_engine": "D-ID (Primary) + Veo 3.1 (Fallback)",
         "video_flow": {
-            "1_primary": "Veo 3.1 - AI video generation with your photo",
-            "2_fallback": "DALL-E - Viral poster image"
+            "1_primary": "D-ID - Talking head video from your photo (RECOMMENDED)",
+            "2_secondary": "Veo 3.1 - AI video generation (if D-ID fails)",
+            "3_fallback": "DALL-E - Viral poster image (if all video fails)"
         },
         "script_flow": {
             "1_generate": "OpenAI GPT-4 creates viral script",
@@ -809,10 +811,16 @@ async def get_viral_video_config():
             "3_correct": "Auto-corrects any hallucinations"
         },
         "features": {
-            "veo_video": "Veo 3.1 animates your photo into speaking video",
+            "did_video": "D-ID animates your photo into a talking head video",
+            "veo_video": "Veo 3.1 generates AI video (fallback)",
             "dual_llm": "OpenAI + Gemini prevents hallucination",
             "twitter_text": "Pre-written viral post with hashtags",
             "poster_fallback": "DALL-E poster if video fails"
+        },
+        "setup": {
+            "did_api_key": "Get from https://studio.d-id.com/ (free tier available)",
+            "gemini_api_key": "Get from https://aistudio.google.com/",
+            "openai_api_key": "Get from https://platform.openai.com/"
         }
     }
 
