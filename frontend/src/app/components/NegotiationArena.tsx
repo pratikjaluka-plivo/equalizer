@@ -81,9 +81,20 @@ export function NegotiationArena({ onClose }: Props) {
   const wsRef = useRef<WebSocket | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Initialize PeerJS
+  // Initialize PeerJS with proper ICE servers for reliable connections
   useEffect(() => {
-    const peer = new Peer();
+    const peer = new Peer({
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
+          { urls: 'stun:global.stun.twilio.com:3478' },
+        ]
+      }
+    });
 
     peer.on('open', (id) => {
       console.log('My peer ID:', id);
@@ -696,28 +707,6 @@ export function NegotiationArena({ onClose }: Props) {
                   <span className="text-gray-300 text-sm">
                     {isListening ? 'AI is listening to their speech...' : 'Click microphone to start AI'}
                   </span>
-                </div>
-              </div>
-
-              {/* Manual Input for Demo */}
-              <div className="p-4 border-b border-gray-800">
-                <label className="block text-xs text-gray-500 mb-2">TYPE WHAT THEY SAY (for demo)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={manualInput}
-                    onChange={(e) => setManualInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && sendManualInput()}
-                    placeholder="Type their argument..."
-                    className="flex-1 px-3 py-2 bg-gray-800 rounded text-white text-sm placeholder-gray-500 border border-gray-700 focus:border-purple-500 focus:outline-none"
-                  />
-                  <button
-                    onClick={sendManualInput}
-                    disabled={!manualInput.trim() || isAnalyzing}
-                    className="px-4 py-2 bg-purple-500 text-white rounded text-sm font-semibold hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isAnalyzing ? '...' : 'Analyze'}
-                  </button>
                 </div>
               </div>
 
