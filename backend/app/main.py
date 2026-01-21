@@ -85,6 +85,11 @@ def read_root():
     return {"message": "The Equalizer - Medical Bill Fighter", "status": "ready"}
 
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
+
 @app.post("/api/analyze", response_model=AnalysisResponse)
 async def analyze_bill(bill_input: ManualBillInput):
     """
