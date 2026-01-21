@@ -41,6 +41,7 @@ from app.integrations.negotiation_arena import (
     get_session_summary,
     transcribe_audio
 )
+from app.intelligence.smart_analyzer import full_bill_analysis
 
 app = FastAPI(title="The Equalizer", version="1.0.0")
 
@@ -208,6 +209,147 @@ async def parse_bill_file(file: UploadFile = File(...)):
         return {"success": True, "bill_data": bill_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# SMART BILL ANALYZER - LLM-powered, works for EVERYONE (not just govt employees)
+# =============================================================================
+
+@app.post("/api/smart-analyze")
+async def smart_analyze_bill(
+    file: UploadFile = File(...),
+    hospital_name: Optional[str] = None
+):
+    """
+    Smart Bill Analysis - Complete LLM-powered bill analysis.
+
+    This endpoint:
+    1. Parses the bill using AI vision (supports PDF and images)
+    2. Identifies the procedure, hospital, and all charges
+    3. Estimates fair prices using PMJAY rates and market data (NOT CGHS)
+    4. Detects billing errors, duplicates, and suspicious charges
+    5. Generates negotiation strategy and next steps
+
+    Works for ANY patient - not limited to government employees.
+
+    Parameters:
+    - file: Bill image (JPG, PNG) or PDF
+    - hospital_name: Optional - pre-selected hospital name for validation
+
+    Returns complete analysis with:
+    - Parsed bill data
+    - Fair price estimates from multiple sources
+    - Overcharge analysis
+    - Specific billing issues found
+    - Negotiation points
+    - Legal references
+    - Next steps
+    """
+    try:
+        contents = await file.read()
+        result = await full_bill_analysis(
+            file_contents=contents,
+            filename=file.filename,
+            hospital_name=hospital_name
+        )
+        return {"success": True, **result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+@app.get("/api/pricing-info")
+async def get_pricing_info():
+    """
+    Get information about pricing benchmarks used.
+
+    Returns explanation of different pricing sources and what they mean.
+    Helps users understand that CGHS is NOT the only benchmark.
+    """
+    return {
+        "benchmarks": {
+            "pmjay": {
+                "name": "PMJAY (Ayushman Bharat)",
+                "description": "Government health insurance scheme covering 50 crore Indians",
+                "who_its_for": "Below Poverty Line families, but rates serve as baseline for all",
+                "coverage": "1,950+ procedures with fixed package rates",
+                "why_relevant": "Shows what hospitals ACCEPT as payment for procedures",
+                "website": "https://pmjay.gov.in"
+            },
+            "cghs": {
+                "name": "CGHS (Central Government Health Scheme)",
+                "description": "Health scheme for central government employees and pensioners",
+                "who_its_for": "ONLY government employees - NOT for private patients",
+                "coverage": "Comprehensive medical coverage",
+                "why_relevant": "Often cited but legally only applicable to govt employees",
+                "website": "https://cghs.gov.in"
+            },
+            "market_rates": {
+                "name": "Market Average Rates",
+                "description": "What hospitals typically charge across different tiers",
+                "categories": {
+                    "budget": "1.5x PMJAY - Economy/budget hospitals",
+                    "standard": "2.5x PMJAY - Regular private hospitals",
+                    "premium": "4x PMJAY - Corporate/premium hospitals",
+                    "super_premium": "6x PMJAY - Top-tier hospitals (Max, Medanta, Apollo flagship)"
+                }
+            },
+            "insurance_rates": {
+                "name": "Insurance TPA Rates",
+                "description": "What insurance companies typically approve",
+                "typical": "Around 2x PMJAY rates",
+                "why_relevant": "Private patients shouldn't pay much more than insured patients"
+            }
+        },
+        "state_regulations": {
+            "price_capped_states": ["West Bengal", "Maharashtra (partial)", "Rajasthan"],
+            "explanation": "Some states have Clinical Establishments Act rules that cap prices",
+            "action": "Check if your state has price regulation"
+        },
+        "legal_protection": {
+            "consumer_protection_act": "Covers medical services, overcharging is unfair trade practice",
+            "clinical_establishments_act": "Requires hospitals to display rates, comply with standards",
+            "medical_council": "Can complain about unethical practices"
+        }
+    }
+
+
+@app.get("/api/pmjay-rates")
+async def get_pmjay_rates(procedure: Optional[str] = None):
+    """
+    Get PMJAY (Ayushman Bharat) rates for procedures.
+
+    These are the baseline rates that hospitals accept under government insurance.
+    Useful reference for what procedures SHOULD cost.
+    """
+    from app.intelligence.smart_analyzer import PMJAY_RATES_2024, _normalize_procedure
+
+    if procedure:
+        normalized = _normalize_procedure(procedure)
+        rate_data = PMJAY_RATES_2024.get(normalized)
+        if rate_data:
+            return {
+                "procedure": procedure,
+                "normalized": normalized,
+                "pmjay_rate": rate_data["rate"],
+                "package_code": rate_data["code"],
+                "typical_stay_days": rate_data["days"],
+                "market_estimates": {
+                    "budget_hospital": rate_data["rate"] * 1.5,
+                    "standard_hospital": rate_data["rate"] * 2.5,
+                    "premium_hospital": rate_data["rate"] * 4.0
+                }
+            }
+        else:
+            return {"procedure": procedure, "message": "Rate not found in database", "available_procedures": list(PMJAY_RATES_2024.keys())}
+
+    # Return all rates
+    return {
+        "rates": PMJAY_RATES_2024,
+        "note": "PMJAY rates are package rates including room, surgery, medicines, and consumables",
+        "source": "National Health Authority (NHA)"
+    }
 
 
 @app.get("/api/hospitals/search")

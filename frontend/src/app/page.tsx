@@ -9,15 +9,18 @@ import { PredictionPanel } from './components/PredictionPanel';
 import { EvidenceWall } from './components/EvidenceWall';
 import { ValidBillAssistance } from './components/ValidBillAssistance';
 import { NegotiationArena } from './components/NegotiationArena';
+import { SmartBillUpload } from './components/SmartBillUpload';
+import { SmartAnalysisResult } from './components/SmartAnalysisResult';
 import { analyzeBill, AnalysisResult, BillInput as BillInputType } from '@/lib/api';
-import { Shield, Zap, Target, FileCheck, Swords, Heart, Video, Sparkles } from 'lucide-react';
+import { Shield, Zap, Target, FileCheck, Swords, Heart, Video, Sparkles, Upload, FileText } from 'lucide-react';
 
-type Stage = 'intro' | 'input' | 'analyzing' | 'reveal' | 'arsenal';
+type Stage = 'intro' | 'input' | 'analyzing' | 'reveal' | 'arsenal' | 'smart-upload' | 'smart-result';
 type ArsenalTab = 'evidence' | 'weapons';
 
 export default function Home() {
   const [stage, setStage] = useState<Stage>('intro');
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [smartResult, setSmartResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [arsenalTab, setArsenalTab] = useState<ArsenalTab>('evidence');
   const [showNegotiationArena, setShowNegotiationArena] = useState(false);
@@ -51,7 +54,17 @@ export default function Home() {
   const handleReset = () => {
     setStage('intro');
     setAnalysisResult(null);
+    setSmartResult(null);
     setError(null);
+  };
+
+  const handleSmartUploadClick = () => {
+    setStage('smart-upload');
+  };
+
+  const handleSmartAnalysisComplete = (result: any) => {
+    setSmartResult(result);
+    setStage('smart-result');
   };
 
   return (
@@ -159,36 +172,55 @@ export default function Home() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 2.7 }}
-                className="flex flex-col sm:flex-row gap-4 justify-center"
+                className="flex flex-col gap-4 items-center"
               >
+                {/* Primary CTA - Smart Upload */}
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={handleStartClick}
-                  className="px-12 py-4 bg-[#00ff88] text-black font-bold text-xl rounded-lg glow-green hover:bg-[#00dd77] transition-colors"
+                  onClick={handleSmartUploadClick}
+                  className="px-12 py-4 bg-[#00ff88] text-black font-bold text-xl rounded-lg glow-green hover:bg-[#00dd77] transition-colors flex items-center gap-3"
                 >
-                  FIGHT YOUR BILL
-                </motion.button>
-
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setShowNegotiationArena(true)}
-                  className="px-12 py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold text-xl rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center gap-3 justify-center"
-                >
-                  <Video className="w-6 h-6" />
-                  LIVE NEGOTIATION
+                  <Upload className="w-6 h-6" />
+                  UPLOAD YOUR BILL
                   <Sparkles className="w-5 h-5" />
                 </motion.button>
+
+                <p className="text-gray-500 text-sm">
+                  AI analyzes your bill instantly - works for everyone
+                </p>
+
+                {/* Secondary Options */}
+                <div className="flex flex-col sm:flex-row gap-4 mt-4">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleStartClick}
+                    className="px-8 py-3 border border-gray-600 text-gray-300 font-semibold rounded-lg hover:bg-gray-900 transition-colors flex items-center gap-2"
+                  >
+                    <FileText className="w-5 h-5" />
+                    Manual Entry
+                  </motion.button>
+
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setShowNegotiationArena(true)}
+                    className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center gap-2"
+                  >
+                    <Video className="w-5 h-5" />
+                    Live Negotiation
+                  </motion.button>
+                </div>
               </motion.div>
 
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 3 }}
-                className="text-gray-500 text-sm mt-6"
+                className="text-gray-500 text-sm mt-8"
               >
-                <span className="text-purple-400 font-semibold">NEW:</span> Video call with real-time AI counter-arguments
+                <span className="text-[#00ff88] font-semibold">NEW:</span> Uses PMJAY rates - works for everyone, not just govt employees
               </motion.p>
             </motion.div>
           </motion.div>
@@ -459,6 +491,22 @@ export default function Home() {
               )}
             </div>
           </motion.div>
+        )}
+
+        {/* SMART UPLOAD STAGE */}
+        {stage === 'smart-upload' && (
+          <SmartBillUpload
+            onAnalysisComplete={handleSmartAnalysisComplete}
+            onBack={handleReset}
+          />
+        )}
+
+        {/* SMART RESULT STAGE */}
+        {stage === 'smart-result' && smartResult && (
+          <SmartAnalysisResult
+            result={smartResult}
+            onNewAnalysis={handleReset}
+          />
         )}
       </AnimatePresence>
 
