@@ -12,7 +12,7 @@ import { NegotiationArena } from './components/NegotiationArena';
 import { SmartBillUpload } from './components/SmartBillUpload';
 import { SmartAnalysisResult } from './components/SmartAnalysisResult';
 import { analyzeBill, AnalysisResult, BillInput as BillInputType } from '@/lib/api';
-import { Shield, Zap, Target, FileCheck, Swords, Heart, Video, Sparkles, Upload, FileText } from 'lucide-react';
+import { Shield, Zap, Target, FileCheck, Swords, Heart, Video } from 'lucide-react';
 
 type Stage = 'intro' | 'input' | 'analyzing' | 'reveal' | 'arsenal' | 'smart-upload' | 'smart-result';
 type ArsenalTab = 'evidence' | 'weapons';
@@ -172,56 +172,16 @@ export default function Home() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 2.7 }}
-                className="flex flex-col gap-4 items-center"
               >
-                {/* Primary CTA - Smart Upload */}
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={handleSmartUploadClick}
-                  className="px-12 py-4 bg-[#00ff88] text-black font-bold text-xl rounded-lg glow-green hover:bg-[#00dd77] transition-colors flex items-center gap-3"
+                  onClick={handleStartClick}
+                  className="px-12 py-4 bg-[#00ff88] text-black font-bold text-xl rounded-lg glow-green hover:bg-[#00dd77] transition-colors"
                 >
-                  <Upload className="w-6 h-6" />
-                  UPLOAD YOUR BILL
-                  <Sparkles className="w-5 h-5" />
+                  ANALYZE YOUR BILL →
                 </motion.button>
-
-                <p className="text-gray-500 text-sm">
-                  AI analyzes your bill instantly - works for everyone
-                </p>
-
-                {/* Secondary Options */}
-                <div className="flex flex-col sm:flex-row gap-4 mt-4">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleStartClick}
-                    className="px-8 py-3 border border-gray-600 text-gray-300 font-semibold rounded-lg hover:bg-gray-900 transition-colors flex items-center gap-2"
-                  >
-                    <FileText className="w-5 h-5" />
-                    Manual Entry
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setShowNegotiationArena(true)}
-                    className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center gap-2"
-                  >
-                    <Video className="w-5 h-5" />
-                    Live Negotiation
-                  </motion.button>
-                </div>
               </motion.div>
-
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 3 }}
-                className="text-gray-500 text-sm mt-8"
-              >
-                <span className="text-[#00ff88] font-semibold">NEW:</span> Uses PMJAY rates - works for everyone, not just govt employees
-              </motion.p>
             </motion.div>
           </motion.div>
         )}
