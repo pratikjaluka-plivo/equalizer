@@ -1,23 +1,23 @@
-fastapi==0.109.0
-uvicorn==0.27.0
-python-multipart==0.0.6
+fastapi>=0.109.0
+uvicorn>=0.27.0
+python-multipart>=0.0.6
 anthropic>=0.40.0
 pydantic>=2.9.0
 pydantic-settings>=2.5.0
-httpx==0.26.0
-python-dotenv==1.0.0
-PyPDF2==3.0.1
-pdf2image==1.17.0
-pytesseract==0.3.10
-aiofiles==23.2.1
+httpx>=0.26.0
+python-dotenv>=1.0.0
+PyPDF2>=3.0.1
+pdf2image>=1.17.0
+pytesseract>=0.3.10
+aiofiles>=23.2.1
 
 # Live Escalation - Email & WhatsApp
-google-auth==2.27.0
-google-auth-oauthlib==1.2.0
-google-auth-httplib2==0.2.0
-google-api-python-client==2.116.0
-plivo==4.47.0
-tweepy==4.14.0
+google-auth>=2.27.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.116.0
+plivo>=4.47.0
+tweepy>=4.14.0
 
 # Google Gemini/Veo - AI video generation
 google-genai>=1.0.0
