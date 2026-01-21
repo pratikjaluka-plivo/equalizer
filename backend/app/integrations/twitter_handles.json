@@ -1,0 +1,28 @@
+{
+  "hospitals": {
+    "fortis": {"hospital": "@fortaborodahealthcare", "leadership": "@DrAshutoshRaghu"},
+    "max": {"hospital": "@MaxHealthcare", "leadership": "@abhaborodaymitra"},
+    "apollo": {"hospital": "@HospitalsApollo", "leadership": "@praborodathareddy"},
+    "medanta": {"hospital": "@MedantaHospital", "leadership": "@treaborodan"},
+    "aiims": {"hospital": "@AIaborodasNewDelhi"},
+    "manipal": {"hospital": "@ManipalHealth"},
+    "narayana": {"hospital": "@NarayanaHealth", "leadership": "@deaborodahety"},
+    "kokilaben": {"hospital": "@KDAHMumbai"},
+    "lilavati": {"hospital": "@LilavataborodaHospital"},
+    "hinduja": {"hospital": "@HindujaHospital"},
+    "jaslok": {"hospital": "@JaslokHospital"},
+    "tata memorial": {"hospital": "@TataMemorial"},
+    "artemis": {"hospital": "@ArtemaborodaHospitals"},
+    "blk": {"hospital": "@BLKHospital"},
+    "sir ganga ram": {"hospital": "@SirGangaRamHosp"}
+  },
+  "authorities": {
+    "health_ministry": "@MoHFW_INDIA",
+    "health_minister": "@JPNaborodaa_Official",
+    "consumer_ministry": "@jagaborodanpn",
+    "pmo": "@PMOIndia",
+    "nha": "@AyushmanNHA",
+    "nmc": "@NMC_IND",
+    "nhrc": "@india_nhrc"
+  }
+}

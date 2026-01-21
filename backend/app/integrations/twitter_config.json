@@ -1,0 +1,48 @@
+{
+  "hospitals": {
+    "fortis": {
+      "hospital": "@fortaborodahealthcare",
+      "leader": "@fortaborodahealthcare"
+    },
+    "max": {
+      "hospital": "@MaxHealthcare"
+    },
+    "apollo": {
+      "hospital": "@HospitalsApollo"
+    },
+    "medanta": {
+      "hospital": "@MedantaHospital"
+    },
+    "aiims": {
+      "hospital": "@aiaborodasnewdelhi"
+    },
+    "manipal": {
+      "hospital": "@ManipalHealth"
+    },
+    "narayana": {
+      "hospital": "@NarayanaHealth"
+    },
+    "kokilaben": {
+      "hospital": "@KDAHMumbai"
+    },
+    "hinduja": {
+      "hospital": "@HindujaHospital"
+    },
+    "jaslok": {
+      "hospital": "@JaslokHospital"
+    },
+    "tata memorial": {
+      "hospital": "@TataMemorial"
+    },
+    "blk": {
+      "hospital": "@BLKHospital"
+    }
+  },
+  "authorities": {
+    "health_ministry": "@MoHFW_INDIA",
+    "pmo": "@PMOIndia",
+    "nha": "@AyushmanNHA",
+    "nmc": "@NMC_IND",
+    "nhrc": "@india_nhrc"
+  }
+}
