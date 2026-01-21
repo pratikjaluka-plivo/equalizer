@@ -754,12 +754,14 @@ Together we can END medical bill exploitation
             "twitter_intent_url": thread_urls[0],  # First tweet URL for backwards compatibility
             "full_post": full_post,
             "platforms": ["Twitter/X"],
-            "action_required": "Post each tweet in order to create a thread",
+            "action_required": "Post each tweet in order to create a thread. ATTACH THE VIDEO to your first tweet!",
             "thread_count": len(thread),
             "tagged_hospital": hospital_tags,
             "tagged_authorities": authority_handles,
             "tagged_activists": activist_handles,
             "tagged_journalists": journalist_handles,
+            "video_url": "/static/default_viral_video.mp4",
+            "video_instruction": "Download and attach this video to your FIRST tweet for maximum viral impact!",
         }
 
     def get_session(self, session_id: str) -> Optional[LiveEscalationSession]:

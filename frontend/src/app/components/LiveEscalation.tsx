@@ -77,6 +77,7 @@ export function LiveEscalation({
   const [twitterIntentUrl, setTwitterIntentUrl] = useState<string | null>(null);
   const [twitterThread, setTwitterThread] = useState<string[]>([]);
   const [twitterThreadUrls, setTwitterThreadUrls] = useState<string[]>([]);
+  const [threadVideoUrl, setThreadVideoUrl] = useState<string | null>(null);
 
   // Viral Video State
   const [showWebcam, setShowWebcam] = useState(false);
@@ -153,6 +154,10 @@ export function LiveEscalation({
           // Fallback to single URL for backwards compatibility
           if (eventData.result?.result?.twitter_intent_url) {
             setTwitterIntentUrl(eventData.result.result.twitter_intent_url);
+          }
+          // Capture video URL for thread
+          if (eventData.result?.result?.video_url) {
+            setThreadVideoUrl(eventData.result.result.video_url);
           }
           setSteps((prev) =>
             prev.map((step, idx) =>
@@ -919,8 +924,28 @@ export function LiveEscalation({
                       <Twitter className="w-4 h-4" />
                       VIRAL TWITTER THREAD ({twitterThreadUrls.length} TWEETS)
                     </h4>
+
+                    {/* Video Download Section - Prominent */}
+                    <div className="bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/50 rounded-lg p-4 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Video className="w-5 h-5 text-red-400" />
+                        <span className="font-bold text-red-300">STEP 1: Download Video First!</span>
+                      </div>
+                      <p className="text-xs text-gray-300 mb-3">
+                        Attach this video to your FIRST tweet for 10x more engagement and viral reach!
+                      </p>
+                      <a
+                        href={`${API_BASE}${threadVideoUrl || '/static/default_viral_video.mp4'}`}
+                        download="hospital_bill_exposed.mp4"
+                        className="w-full py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold rounded-lg hover:from-red-600 hover:to-orange-600 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Download className="w-5 h-5" />
+                        DOWNLOAD VIDEO FOR FIRST TWEET
+                      </a>
+                    </div>
+
                     <p className="text-xs text-gray-500 mb-4">
-                      Post each tweet in order to create a thread. Click each button to open the pre-filled tweet.
+                      STEP 2: Post each tweet in order. <span className="text-red-400 font-semibold">Attach the video when posting Tweet 1!</span>
                     </p>
                     <div className="space-y-2">
                       {twitterThreadUrls.map((url, index) => (
@@ -929,13 +954,19 @@ export function LiveEscalation({
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="w-full py-3 px-4 bg-black border border-[#1DA1F2]/50 text-[#1DA1F2] font-medium rounded-lg hover:bg-[#1DA1F2] hover:text-white transition-all flex items-center justify-between group"
+                          className={`w-full py-3 px-4 bg-black border font-medium rounded-lg hover:text-white transition-all flex items-center justify-between group ${
+                            index === 0
+                              ? 'border-red-500 text-red-400 hover:bg-red-500'
+                              : 'border-[#1DA1F2]/50 text-[#1DA1F2] hover:bg-[#1DA1F2]'
+                          }`}
                         >
                           <span className="flex items-center gap-2">
-                            <span className="w-6 h-6 bg-[#1DA1F2]/20 rounded-full flex items-center justify-center text-xs font-bold group-hover:bg-white/20">
+                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold group-hover:bg-white/20 ${
+                              index === 0 ? 'bg-red-500/20' : 'bg-[#1DA1F2]/20'
+                            }`}>
                               {index + 1}
                             </span>
-                            {index === 0 && "The Hook - Start Here"}
+                            {index === 0 && "🎬 The Hook - ATTACH VIDEO HERE"}
                             {index === 1 && "The Evidence"}
                             {index === 2 && "Legal Violations"}
                             {index === 3 && "Tag Authorities"}
